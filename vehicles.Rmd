@@ -1,0 +1,131 @@
+---
+title: "R Notebook"
+#output: html_notebook
+---
+
+**PreProcessing**
+
+##Load libraries
+```{r}
+library(tidyverse)
+#library(chron)
+```
+
+##Load dataset
+```{r}
+vehicle = read.csv("Motor_Vehicle_Collisions.csv")
+```
+
+##Create a copy of the dataframe
+```{r}
+clean_vehicle = vehicle
+nrow(clean_vehicle)
+```
+```{r}
+head(clean_vehicle)
+```
+```{r}
+letters = "i am good" 
+letters1 = "isha is wonderful"
+str_c(letters, letters1, sep = ": ")
+```
+
+##Clean my data
+```{r}
+
+
+  #mutate(., CRASH.TIME= strptime(CRASH.TIME, "%H:%M"))
+# try = try %>%
+#   mutate(., CRASH.TIME = str_match(CRASH.TIME, "[0-9][0-9]:[0-9][0-9]"))
+try['CRASH.TIME'] = as.POSIXct(try$CRASH.TIME, format = "%H:%M")
+```
+
+```{r}
+# Converting to lower cases, removing period and shortening  the column names
+names(clean_vehicle) = names(clean_vehicle) %>%  
+  str_to_lower(.) %>%
+  str_replace_all(.,"[.]", "_") %>%
+  str_replace_all(., "number_of_", "") %>%
+  str_replace_all(., "_name", "") %>% 
+  str_replace_all(.,"contributing_factor", "confactor") %>% 
+  str_replace_all(.,"_code_", "")
+```
+```{r}
+#Changed the date from character to Date representation
+clean_vehicle['crash_date'] = as.Date(clean_vehicle$crash_date, format="%m/%d/%Y")
+```
+```{r}
+#Changed time from character to time representation
+clean_vehicle['crash_time'] = as.POSIXct(clean_vehicle$crash_time, format = "%H:%M")
+```
+```{r}
+#Converted borough column from character to factor
+#clean_vehicle['borough'] = as.factor(clean_vehicle$borough)
+```
+```{r}
+#Testing to see how many rows were missing borough information
+clean_vehicle %>% 
+  group_by(., borough) %>% 
+  summarise(., n())
+```
+```{r}
+clean_vehicle %>% 
+  group_by(., location) %>% 
+  summarise(.,count = n()) %>% 
+  arrange(.,desc(count))
+```
+```{r}
+# Tried to separate the location column into lat and long to see if I could fill in some of the missing information in latitudes and longitudes in the table. 
+sep_location = clean_vehicle %>% 
+  separate(., location, into = c("lat", "long"), sep =",")
+
+# Dropped the idea because it didn't seem that I would be able to retrieve any new information 
+```
+
+```{r}
+# The purpose here was to create dictionary like structure which will have all the unique borough, lat and long combinations, which we could use to fill in the missing borough information in some of the rows in our dataframe. For this, selected borough, lat and long columns and filtered the smaller dataframe for all the rows that had borough information and where latitude and longitude were neither 0 nor NA. The second group_by was done as part of quality check to see if same combination of lat, long values existed in 2 different boroughs because that will make it difficult to assign a borough to a lat, long combination in our main dataframe. Found ~300 rows that had 2 or more boroughs associated with same lat,long combination. Filtered those out and finally obtained latlonglookup dataframe.
+latlonglookup = clean_vehicle %>% 
+  select(., borough, latitude, longitude) %>% 
+  filter(., ((borough != "") &  (!(is.na(latitude) | latitude == "0")) & (!(is.na(longitude) | longitude == "0")))) %>% 
+  group_by(.,borough, latitude, longitude) %>% 
+  distinct(.,)%>% 
+  group_by(.,latitude, longitude) %>% 
+  mutate(., count= n()) %>% 
+  filter(., count==1)
+```
+
+```{r}
+#Left joined latlonglookup with clean_vehicle by lat, long combination. This created 2 new columns "borough.y" and "count". Saved it in a new dataframe filled_clean_vehicle. Borough.y column had 443146 observations missing as opposed to 549153 in borough.x column
+filled_clean_vehicle=
+  left_join(clean_vehicle,latlonglookup, by =c("latitude","longitude"))
+```
+
+```{r}
+filled_clean_vehicle%>% 
+  filter(., is.na(borough.y)) %>%
+  nrow()
+  #summarise(.,n())
+```
+```{r}
+filled_clean_vehicle %>% 
+  filter(., borough.x == "") %>% 
+  nrow()
+```
+```{r}
+filled_clean_vehicle %>% 
+filter(., str_detect(on_street, "PARKWAY"))
+```
+```{r}
+# Filled in borough.x column with additional values from borough.y and then dropped the last 2 columns i.e. borough.y and count. renamed borough.x as borough
+filled_clean_vehicle = filled_clean_vehicle %>% 
+  mutate(., borough.x = ifelse((borough.x==""), borough.y, borough.x))%>% 
+  select(., -count, -borough.y) %>% 
+  rename(.,borough = borough.x)
+```
+```{r}
+
+filled_clean_vehicle %>% 
+  filter(.,is.na(borough.x)) %>% 
+  nrow()
+```
+
