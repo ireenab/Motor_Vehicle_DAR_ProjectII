@@ -7,8 +7,8 @@ title: "R Notebook"
 
 ##Load libraries
 ```{r}
-library(tidyverse)
-#library(chron)
+#library(tidyverse)
+library(lubridate)
 ```
 
 ##Load dataset
@@ -24,21 +24,8 @@ nrow(clean_vehicle)
 ```{r}
 head(clean_vehicle)
 ```
-```{r}
-letters = "i am good" 
-letters1 = "isha is wonderful"
-str_c(letters, letters1, sep = ": ")
-```
 
 ##Clean my data
-```{r}
-
-
-  #mutate(., CRASH.TIME= strptime(CRASH.TIME, "%H:%M"))
-# try = try %>%
-#   mutate(., CRASH.TIME = str_match(CRASH.TIME, "[0-9][0-9]:[0-9][0-9]"))
-try['CRASH.TIME'] = as.POSIXct(try$CRASH.TIME, format = "%H:%M")
-```
 
 ```{r}
 # Converting to lower cases, removing period and shortening  the column names
@@ -125,7 +112,89 @@ filled_clean_vehicle = filled_clean_vehicle %>%
 ```{r}
 
 filled_clean_vehicle %>% 
-  filter(.,is.na(borough.x)) %>% 
+  filter(.,is.na(borough)) %>% 
   nrow()
+```
+```{r}
+write.csv(filled_clean_vehicle, "./filled_clean_vehicles.csv")
+```
+
+```{r}
+narm_fcv = filled_clean_vehicle %>% 
+  filter(., !is.na(borough))
+```
+
+```{r}
+filled_clean_vehicle %>% 
+  filter(., (confactor_vehicle_5!="" & confactor_vehicle_5!="Unspecified")) %>% 
+  filter(., (confactor_vehicle_5!=confactor_vehicle_4) & (confactor_vehicle_5 != confactor_vehicle_3) & (confactor_vehicle_5!=confactor_vehicle_2) & (confactor_vehicle_5!=confactor_vehicle_1)) %>% 
+  distinct(confactor_vehicle_5)
+```
+```{r}
+narm_fcv %>%
+  filter(., (confactor_vehicle_5!="" & confactor_vehicle_5!="Unspecified")) %>%
+  filter(., (confactor_vehicle_5!=confactor_vehicle_4)& (confactor_vehicle_5 != confactor_vehicle_3) & (confactor_vehicle_5!=confactor_vehicle_2) &(confactor_vehicle_5!=confactor_vehicle_1)) %>% 
+  distinct(confactor_vehicle_5)
+  
+```
+```{r}
+narm_fcv %>% 
+  filter(., (vehicle_type5!="")) #%>% 
+  # filter(., (confactor_vehicle_5!=confactor_vehicle_4) & (confactor_vehicle_5 != confactor_vehicle_3) & (confactor_vehicle_5!=confactor_vehicle_2) & (confactor_vehicle_5!=confactor_vehicle_1)) %>% 
+  # distinct(confactor_vehicle_5)
+```
+
+```{r}
+narm_fcv %>% 
+  filter(., (off_street!="")) #%>%
+```
+
+```{r}
+narm_fcv %>% 
+  group_by(., borough) %>% 
+  summarise(.,count = n()) %>% 
+  ggplot(aes(x=borough, y=count))+
+  geom_bar(stat="identity", aes(fill=borough))
+```
+
+```{r}
+narm_fcv %>% 
+  mutate(., year = year(crash_date)) %>% 
+  group_by(., borough, year) %>%
+  summarise(.,count = n()) %>%
+  ggplot(aes(x=year, y=count))+
+  geom_line(stat="identity", aes(color=borough)) +geom_point()
+```
+```{r}
+narm_fcv %>% 
+  mutate(., year = year(crash_date), month = month(crash_date)) %>% 
+  group_by(., borough, year, month) %>%
+  summarise(.,count = n()) #%>%
+  ggplot(aes(x=year, y=count))+
+  # geom_bar(stat="identity", aes(fill=borough), position= "dodge")
+```
+```{r}
+narm_fcv %>%
+  mutate(., year = year(crash_date), month = month(crash_date)) %>%
+  filter(., borough == "MANHATTAN" & year =="2017") %>%
+  group_by(.,crash_date) %>% 
+  summarise(., count = n()) %>% 
+  ggplot(., aes(x=crash_date, y=count))+
+  geom_line()
+```
+```{r}
+narm_fcv %>%
+  mutate(., by15 = cut(crash_time, "30 min")) %>%
+  filter(., borough == "STATEN ISLAND" & off_street == "") %>%
+  group_by(.,by15) %>% 
+  summarise(., count = n()) %>% 
+   ggplot(., aes(x=as.POSIXct(by15), y=count))+
+   geom_line()
+```
+```{r}
+narm_fcv %>%
+  mutate(., by15 = cut(crash_time, "30 min")) %>%
+  filter(., borough == "MANHATTAN" & off_street == "" & (as.POSIXct(by15) >"2021-06-04 15:00:00" & as.POSIXct(by15)<"2021-06-04 17:00:00"))
+  
 ```
 
