@@ -7,8 +7,9 @@ title: "R Notebook"
 
 ##Load libraries
 ```{r}
-#library(tidyverse)
+library(tidyverse)
 library(lubridate)
+library(reshape)
 ```
 
 ##Load dataset
@@ -104,10 +105,10 @@ filter(., str_detect(on_street, "PARKWAY"))
 ```
 ```{r}
 # Filled in borough.x column with additional values from borough.y and then dropped the last 2 columns i.e. borough.y and count. renamed borough.x as borough
-filled_clean_vehicle = filled_clean_vehicle %>% 
-  mutate(., borough.x = ifelse((borough.x==""), borough.y, borough.x))%>% 
-  select(., -count, -borough.y) %>% 
-  rename(.,borough = borough.x)
+filled_clean_vehicle = filled_clean_vehicle %>%
+  mutate(., borough.x = ifelse((borough.x==""), borough.y, borough.x))%>%
+  select(., -count, -borough.y) %>%
+  rename(., borough = borough.x)
 ```
 ```{r}
 
@@ -122,6 +123,10 @@ write.csv(filled_clean_vehicle, "./filled_clean_vehicles.csv")
 ```{r}
 narm_fcv = filled_clean_vehicle %>% 
   filter(., !is.na(borough))
+```
+
+```{r}
+write.csv(narm_fcv, "./narm_fcv.csv")
 ```
 
 ```{r}
@@ -158,13 +163,49 @@ narm_fcv %>%
 ```
 
 ```{r}
+#Plotted collision data for each borough by the year
 narm_fcv %>% 
   mutate(., year = year(crash_date)) %>% 
   group_by(., borough, year) %>%
   summarise(.,count = n()) %>%
   ggplot(aes(x=year, y=count))+
-  geom_line(stat="identity", aes(color=borough)) +geom_point()
+  geom_line(stat="identity", aes(color=borough)) +geom_point() +
+  theme_light()
 ```
+
+```{r}
+# Plotted collision data for each borough by the month from years 2013-2020(years for which I had complete datasets)
+narm_fcv %>% 
+  mutate(., year= year(crash_date), month = as.Date(paste0("2021-", month(crash_date), "-01"), format="%Y-%m-%d")) %>%
+  filter(.,year !=2012 & year!=2021) %>% 
+  group_by(., borough, month) %>%
+  summarise(.,count = n()) %>%
+  ggplot(aes(x=month, y=count))+
+  geom_line(stat="identity", aes(color=borough))+
+  scale_x_date(date_labels = "%b")+
+  geom_point() #+
+  #xlim(1, 12)
+```
+
+```{r}
+# Plotted collision data for each borough by the day of the week from years 2013-2020(years for which I had complete datasets)
+narm_fcv %>% 
+  mutate(., wday = wday(crash_date, week_start = 1), year=year(crash_date)) %>%
+  filter(.,year !=2012 & year!=2021) %>%
+  group_by(., borough, wday) %>%
+  summarise(.,count = n()) %>%
+  arrange(., wday) %>% 
+  ggplot(aes(x=wday, y=count))+
+  geom_line(stat="identity", aes(color=borough)) #+
+  # geom_point() +
+  # xlim(1, 7)
+```
+
+```{r}
+wday
+```
+
+
 ```{r}
 narm_fcv %>% 
   mutate(., year = year(crash_date), month = month(crash_date)) %>% 
@@ -196,5 +237,374 @@ narm_fcv %>%
   mutate(., by15 = cut(crash_time, "30 min")) %>%
   filter(., borough == "MANHATTAN" & off_street == "" & (as.POSIXct(by15) >"2021-06-04 15:00:00" & as.POSIXct(by15)<"2021-06-04 17:00:00"))
   
+```
+
+
+
+```{r}
+# Risky to drive in. Persons_injured by the year in each borough
+narm_fcv %>% 
+  mutate(., year = year(crash_date), month = month(crash_date)) %>% 
+  select(., borough, persons_injured, year) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>% 
+  summarise(.,total = sum(persons_injured)) %>% 
+  ggplot(aes(x=year, y=total))+
+  geom_line(stat="identity", aes(color=borough)) +
+  geom_point()
+```
+```{r}
+#Persons killed by the year in each borough
+narm_fcv %>% 
+  mutate(., year = year(crash_date), month = month(crash_date)) %>% 
+  select(., borough, persons_killed, year) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., persons_killed = ifelse(is.na(persons_killed), 0, persons_killed)) %>% 
+  summarise(.,total = sum(persons_killed)) %>% 
+  ggplot(aes(x=year, y=total))+
+  geom_line(stat="identity", aes(color=borough)) +
+  geom_point()
+```
+```{r}
+# This plot will not make sense because wherever the number of accidents are greater, number of fatalities are expected to be greater. So, not getting any new information
+narm_fcv %>% 
+  mutate(., year = year(crash_date), month = month(crash_date)) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>% 
+  mutate(.,killed = sum(persons_killed), injured = sum(persons_injured)) %>% 
+ ggplot(aes(x=year, y=killed))+
+ geom_line(stat="identity", aes(color=borough)) 
+ #geom_boxplot()
+```
+
+```{r}
+#Plotting percentage of people killed each year in each borough of the total number of accidents in that borough in that year
+narm_fcv %>%
+  mutate(., year = year(crash_date), month = month(crash_date)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  mutate(., persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., count = n(), p_k = sum(persons_killed), percent =p_k/count*100) %>%
+  # ungroup() %>% 
+  # group_by(., borough, year) %>%
+  # mutate(.,killed = sum(persons_killed), injured = sum(persons_injured)) %>%
+  # mutate(., prop = killed/total) %>%
+  select(., borough, year, p_k, percent) %>%
+  distinct() %>% 
+  # filter(., borough == "MANHATAN") %>% 
+  ggplot(aes(x=year, y=percent))+
+  # #geom_density()
+  geom_line(stat="identity", aes(color=borough)) +
+  geom_point()
+```
+```{r}
+#Plotting percentage of people injured each year in each borough of the total number of accidents in that borough in that year
+narm_fcv %>%
+  mutate(., year = year(crash_date), month = month(crash_date)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  mutate(., persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., count = n(), p_i = sum(persons_injured), percent =p_i/count*100) %>%
+  select(., borough, year, p_i, percent) %>%
+  distinct() %>% 
+  # filter(., borough == "MANHATAN") %>% 
+  ggplot(aes(x=year, y=percent))+
+  # #geom_density()
+  geom_line(stat="identity", aes(color=borough)) +
+  geom_point()
+```
+```{r}
+#Plotting percentage of people injured each year in each borough of the total number of accidents in that borough in that year. In all boroughs, trends have remained pretty similar with most injuries affecting motorists followed by pedestrians followed by cyclists. In 2020, however, in Manhattan, cyclists injuries exceeded pedestrian injuries. Could be likely due to the increased usage of citibikes in Manhattan.
+narm_fcv %>%
+  mutate(., year = year(crash_date)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  mutate(., persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., p_i = sum(persons_injured), m_i =sum(motorist_injured), ped_i = sum(pedestrians_injured), c_i=sum(cyclist_injured), percent_m_i =m_i/p_i*100, percent_ped_i=ped_i/p_i*100, percent_c_i = c_i/p_i*100) %>%
+  select(., borough, year, percent_m_i, percent_ped_i, percent_c_i) %>%
+  distinct() %>%
+  pivot_longer(.,c(percent_m_i, percent_ped_i, percent_c_i), names_to = "victim", values_to = "percent_injured") %>% 
+  mutate(., victim = ifelse(victim == "percent_m_i", "Motorists",
+                            ifelse(victim == "percent_ped_i", "Pedestrians",
+                                   "Cyclists")
+                            )
+         ) %>%
+  # filter(., borough == "MANHATAN") %>% 
+  ggplot(aes(x=year, y=percent_injured))+
+  # # #geom_density()
+  geom_line(stat="identity", aes(color=victim)) +
+  geom_point() +
+  facet_wrap(vars(borough))
+```
+```{r}
+#Plotting percentage of people killed each year in each borough of the total number of accidents in that borough in that year. In all boroughs, trends have remained pretty similar with most fatalities occurring in case of pedestrians followed by motoroists and then cyclists. In 2020, change in trends in all boroughs with ped fatalities reducing in Manhattan and queens and brooklyn
+narm_fcv %>%
+  mutate(., year = year(crash_date)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  mutate(., persons_killed = ifelse(is.na(persons_killed), 0, persons_killed)) %>% 
+  group_by(., borough, year) %>% 
+  mutate(., p_k = sum(persons_killed), m_k =sum(motorist_killed), ped_k = sum(pedestrians_killed), c_k=sum(cyclist_killed), percent_m_k =m_k/p_k*100, percent_ped_k=ped_k/p_k*100, percent_c_k = c_k/p_k*100) %>%
+  select(., borough, year, percent_m_k, percent_ped_k, percent_c_k) %>%
+  distinct() %>%
+  pivot_longer(.,c(percent_m_k, percent_ped_k, percent_c_k), names_to = "victim", values_to = "percent_killed") %>% 
+  mutate(., victim = ifelse(victim == "percent_m_k", "Motorists",
+                            ifelse(victim == "percent_ped_k", "Pedestrians",
+                                   "Cyclists")
+                            )
+         ) %>%
+  # filter(., borough == "MANHATAN") %>% 
+  ggplot(aes(x=year, y=percent_killed))+
+  # # #geom_density()
+  geom_line(stat="identity", aes(color=victim)) +
+  geom_point() +
+  facet_wrap(vars(borough))
+```
+
+```{r}
+narm_fcv %>% 
+  mutate(., confactor_vehicle_1 = ifelse(confactor_vehicle_1 == "Illnes", "Illness", confactor_vehicle_1), confactor_vehicle_1 = ifelse(confactor_vehicle_1 == "Cell Phone (hand-Held)", "Cell Phone (hand-held)", confactor_vehicle_1)) %>% 
+  group_by(., borough, confactor_vehicle_1) %>%
+  select(., borough, confactor_vehicle_1) %>% 
+  summarise(., count =n()) %>% 
+  arrange(.,desc(count)) %>% 
+  top_n(20)
+  
+```
+```{r}
+narm_fcv %>% 
+  mutate(., year = year(crash_date)) %>%
+  select(., borough, year, confactor_vehicle_1,confactor_vehicle_2, confactor_vehicle_3, confactor_vehicle_4, confactor_vehicle_5) %>% 
+  pivot_longer(., c(confactor_vehicle_1,confactor_vehicle_2, confactor_vehicle_3, confactor_vehicle_4, confactor_vehicle_5), names_to = "Contributing_Vehicle", values_to = "Contributing_Factor") %>% 
+  mutate(., Contributing_Factor = ifelse(Contributing_Factor == "Illnes", "Illness", ifelse(Contributing_Factor == "Cell Phone (hand-Held)", "Cell Phone (hand-held)",               ifelse(Contributing_Factor == "Drugs (Illegal)", "Drugs(illegal)", ifelse(Contributing_Factor == "Reaction to Other Uninvolved Vehicle", "Reaction to Uninvolved Vehicle", Contributing_Factor))))) %>% 
+  filter(., Contributing_Factor!= "" & Contributing_Factor!= "1" & Contributing_Factor!= "80") %>% 
+  filter(., !(Contributing_Factor=="Unspecified" & Contributing_Vehicle%in%c("confactor_vehicle_2", "confactor_vehicle_3", "confactor_vehicle_4", "confactor_vehicle_5"))) %>% 
+  group_by(., borough) %>%
+  mutate(., total=n()) %>% 
+  ungroup() %>% 
+  group_by(., borough, Contributing_Factor) %>%
+  mutate(., count=n(), pct = count/total*100) %>%
+  ungroup() %>% 
+  group_by(.,borough) %>% 
+  mutate(., rank = dense_rank(desc(pct))) %>% 
+  select(., borough, Contributing_Factor, pct, rank) %>% 
+  distinct() %>% 
+  #arrange(., desc(rank)) %>% 
+ # top_n(count)
+  # slice_max(., n = 20)
+  #select(Contributing_Factor) %>% 
+ # distinct()
+  filter(., borough == "MANHATTAN" & rank<21) %>%
+#   filter(.,Contributing_Factor!= "Driver Inattention/Distraction" & Contributing_Factor!=  	
+# "Failure to Yield Right-of-Way")%>%
+  # filter(.,Contributing_Factor== "Other Vehicular") 
+ ggplot(aes(x=reorder(Contributing_Factor, pct), y=pct))+
+ geom_bar(stat="identity") +
+ coord_flip()+
+theme(legend.position = "none")#+
+# geom_point() +
+# facet_grid(cols = vars(borough))
+  
+```
+
+```{r}
+narm_fcv = read.csv("/Users/ireenabagai/DATASCIENCE/BOOTCAMP/M4_DAR/RShinyProject/Git_Project/Motor_Vehicle_RDA_ProjectII/NYCvehicleCollision/narm_fcv.csv")
+yearly=narm_fcv %>%
+  select(., crash_date, borough, persons_injured, persons_killed, pedestrians_injured, pedestrians_killed, cyclist_injured, cyclist_killed, motorist_injured, motorist_killed) %>% 
+  mutate(., year = year(crash_date), 
+         persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), 
+         persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>%
+  filter(., year!=2012 & year!= 2021) %>%
+  group_by(., borough, year) %>%
+  mutate(., count = n(), 
+         p_k = sum(persons_killed), 
+         percent_pk =p_k/count*100,
+         m_k =sum(motorist_killed),
+         percent_mk =m_k/p_k*100,
+         ped_k = sum(pedestrians_killed),
+         percent_pedk=ped_k/p_k*100,
+         c_k=sum(cyclist_killed),
+         percent_ck = c_k/p_k*100,
+         p_i = sum(persons_injured), 
+         percent_pi =p_i/count*100, 
+         m_i =sum(motorist_injured),
+         percent_mi =m_i/p_i*100, 
+         ped_i = sum(pedestrians_injured), 
+         percent_pedi=ped_i/p_i*100,         
+         c_i=sum(cyclist_injured), 
+          percent_ci = c_i/p_i*100
+         ) %>%
+  select(., borough, year, count, p_i,percent_pi,m_i, percent_mi,ped_i,    percent_pedi,c_i,percent_ci,
+         p_k,percent_pk, m_k, percent_mk,ped_k, percent_pedk, c_k,percent_ck) %>% 
+  distinct()
+```
+```{r}
+write.csv(yearly, "/Users/ireenabagai/DATASCIENCE/BOOTCAMP/M4_DAR/RShinyProject/Git_Project/Motor_Vehicle_RDA_ProjectII/NYCvehicleCollision/yearly.csv")
+```
+
+```{r}
+monthly = narm_fcv %>%
+  select(., crash_date, borough , persons_injured, persons_killed, pedestrians_injured, pedestrians_killed, cyclist_injured, cyclist_killed, motorist_injured, motorist_killed) %>% 
+  mutate(.,
+         borough = str_to_title(borough),
+         year= year(crash_date), 
+         month = as.Date(paste0("2021-", month(crash_date), "-01"), format="%Y-%m-%d"), 
+         persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), 
+         persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  group_by(., borough, month) %>%
+  mutate(., count = n(), 
+         p_k = sum(persons_killed), 
+         percent_pk =p_k/count*100,
+         m_k =sum(motorist_killed),
+         percent_mk =m_k/p_k*100,
+         ped_k = sum(pedestrians_killed),
+         percent_pedk=ped_k/p_k*100,
+         c_k=sum(cyclist_killed),
+         percent_ck = c_k/p_k*100,
+         p_i = sum(persons_injured), 
+         percent_pi =p_i/count*100, 
+         m_i =sum(motorist_injured),
+         percent_mi =m_i/p_i*100, 
+         ped_i = sum(pedestrians_injured), 
+         percent_pedi=ped_i/p_i*100,         
+         c_i=sum(cyclist_injured), 
+          percent_ci = c_i/p_i*100
+         ) %>%
+  select(., borough, month, count, p_k,percent_pk, p_i,percent_pi,m_i,
+         ped_i,
+         c_i,
+         percent_mi,
+         percent_pedi,
+         percent_ci) %>%
+  distinct()
+```
+```{r}
+write.csv(monthly, "/Users/ireenabagai/DATASCIENCE/BOOTCAMP/M4_DAR/RShinyProject/Git_Project/Motor_Vehicle_RDA_ProjectII/NYCvehicleCollision/monthly.csv")
+```
+
+```{r}
+weekly = narm_fcv %>%
+  select(., crash_date, borough, persons_injured, persons_killed, pedestrians_injured, pedestrians_killed, cyclist_injured, cyclist_killed, motorist_injured, motorist_killed) %>% 
+  mutate(.,year= year(crash_date), 
+         wday = wday(crash_date, week_start = 1), 
+         persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), 
+         persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  group_by(., borough, wday) %>%
+  mutate(., count = n(), 
+         p_k = sum(persons_killed), 
+         percent_pk =p_k/count*100, 
+         p_i = sum(persons_injured), 
+         percent_pi =p_i/count*100, 
+         m_i =sum(motorist_injured), 
+         ped_i = sum(pedestrians_injured), 
+         c_i=sum(cyclist_injured), 
+         percent_mi =m_i/p_i*100, 
+         percent_pedi=ped_i/p_i*100, 
+         percent_ci = c_i/p_i*100
+         ) %>%
+  select(., borough, wday, count) %>% 
+  # select(., borough, month, count, p_k,percent_pk, p_i,percent_pi,m_i, 
+  #        ped_i, 
+  #        c_i, 
+  #        percent_mi, 
+  #        percent_pedi, 
+  #        percent_ci) %>% 
+  distinct()
+```
+```{r}
+write.csv(weekly, "./weekly.csv")
+```
+
+
+```{r}
+hourly = narm_fcv %>%
+  select(., crash_date, crash_time, borough, persons_injured, persons_killed, pedestrians_injured, pedestrians_killed, cyclist_injured, cyclist_killed, motorist_injured, motorist_killed) %>% 
+  mutate(.,year= year(crash_date), 
+         hour = cut(crash_time, "60 min"), 
+         persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), 
+         persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  group_by(., borough, hour) %>%
+  mutate(., count = n(), 
+         p_k = sum(persons_killed), 
+         percent_pk =p_k/count*100, 
+         p_i = sum(persons_injured), 
+         percent_pi =p_i/count*100, 
+         m_i =sum(motorist_injured), 
+         ped_i = sum(pedestrians_injured), 
+         c_i=sum(cyclist_injured), 
+         percent_mi =m_i/p_i*100, 
+         percent_pedi=ped_i/p_i*100, 
+         percent_ci = c_i/p_i*100
+         ) %>%
+  select(., borough, hour, count) %>% 
+  # select(., borough, month, count, p_k,percent_pk, p_i,percent_pi,m_i, 
+  #        ped_i, 
+  #        c_i, 
+  #        percent_mi, 
+  #        percent_pedi, 
+  #        percent_ci) %>% 
+  distinct()
+```
+```{r}
+write.csv(hourly, "./hourly.csv")
+```
+
+```{r}
+half_hourly = narm_fcv %>%
+  select(., crash_date, crash_time, borough, persons_injured, persons_killed, pedestrians_injured, pedestrians_killed, cyclist_injured, cyclist_killed, motorist_injured, motorist_killed) %>% 
+  mutate(.,year= year(crash_date), 
+         half_hour = cut(crash_time, "30 min"), 
+         persons_killed = ifelse(is.na(persons_killed), 0, persons_killed), 
+         persons_injured = ifelse(is.na(persons_injured), 0, persons_injured)) %>%
+  filter(., year!=2012 & year!= 2021) %>% 
+  group_by(., borough, half_hour) %>%
+  mutate(., count = n(), 
+         p_k = sum(persons_killed), 
+         percent_pk =p_k/count*100, 
+         p_i = sum(persons_injured), 
+         percent_pi =p_i/count*100, 
+         m_i =sum(motorist_injured), 
+         ped_i = sum(pedestrians_injured), 
+         c_i=sum(cyclist_injured), 
+         percent_mi =m_i/p_i*100, 
+         percent_pedi=ped_i/p_i*100, 
+         percent_ci = c_i/p_i*100
+         ) %>%
+  select(., borough, half_hour, count) %>% 
+  # select(., borough, month, count, p_k,percent_pk, p_i,percent_pi,m_i, 
+  #        ped_i, 
+  #        c_i, 
+  #        percent_mi, 
+  #        percent_pedi, 
+  #        percent_ci) %>% 
+  distinct()
+```
+```{r}
+write.csv(half_hourly, "./half_hourly.csv")
+```
+
+```{r}
+causes=narm_fcv %>% 
+  mutate(., year = year(crash_date)) %>%
+  select(., borough, year, confactor_vehicle_1,confactor_vehicle_2, confactor_vehicle_3, confactor_vehicle_4, confactor_vehicle_5) %>% 
+  pivot_longer(., c(confactor_vehicle_1,confactor_vehicle_2, confactor_vehicle_3, confactor_vehicle_4, confactor_vehicle_5), names_to = "Contributing_Vehicle", values_to = "Contributing_Factor") %>% 
+  mutate(., Contributing_Factor = ifelse(Contributing_Factor == "Illnes", "Illness", ifelse(Contributing_Factor == "Cell Phone (hand-Held)", "Cell Phone (hand-held)",               ifelse(Contributing_Factor == "Drugs (Illegal)", "Drugs(illegal)", ifelse(Contributing_Factor == "Reaction to Other Uninvolved Vehicle", "Reaction to Uninvolved Vehicle", Contributing_Factor))))) %>% 
+  filter(., Contributing_Factor!= "" & Contributing_Factor!= "1" & Contributing_Factor!= "80") %>% 
+  filter(., !(Contributing_Factor=="Unspecified" & Contributing_Vehicle%in%c("confactor_vehicle_2", "confactor_vehicle_3", "confactor_vehicle_4", "confactor_vehicle_5"))) %>% 
+  group_by(., borough) %>%
+  mutate(., total=n()) %>% 
+  ungroup() %>% 
+  group_by(., borough, Contributing_Factor) %>%
+  mutate(., count=n(), pct = count/total*100) %>%
+  ungroup() %>% 
+  group_by(.,borough) %>% 
+  mutate(., rank = dense_rank(desc(pct))) %>% 
+  select(., borough, Contributing_Factor, pct, rank) %>% 
+  distinct()
+```
+```{r}
+write.csv(causes, "./causes.csv")
 ```
 
