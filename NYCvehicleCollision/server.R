@@ -6,19 +6,23 @@
 #
 #    http://shiny.rstudio.com/
 #
-
-library(shiny)
-library(tidyverse)
-library(scales)
-
-# Define server logic required to draw a histogram
-yearly= read.csv(file ="./yearly.csv")
-monthly=read.csv(file ="./monthly.csv")
-weekly=read.csv(file ="./weekly.csv")
-hourly=read.csv(file ="./hourly.csv")
-half_hourly=read.csv(file ="./half_hourly.csv")
-causes = read.csv(file ="./causes.csv")
-
+# 
+# library(shiny)
+# library(tidyverse)
+# library(scales)
+# library(leaflet)
+# library(htmltools)
+# library(DT)
+# 
+# # Read all the files
+# yearly= read.csv(file ="./yearly.csv")
+# monthly=read.csv(file ="./monthly.csv")
+# weekly=read.csv(file ="./weekly.csv")
+# hourly=read.csv(file ="./hourly.csv")
+# half_hourly=read.csv(file ="./half_hourly.csv")
+# causes = read.csv(file ="./causes.csv")
+# one_per_week =read.csv(file = "./one_per_week.csv")
+source("./global.R")
 shinyServer(function(input, output) {
     
     output$distPlot <- renderPlot({
@@ -96,7 +100,7 @@ shinyServer(function(input, output) {
             xlab("Year") +
             theme(axis.title.x =element_text(size = 16))+
             theme(axis.text.x = element_text(size=12))+
-            ylab("Number of collisions")+
+    
             theme(axis.title.y =element_text(size = 16)) +
             theme(axis.text.y = element_text(size=12))+
             guides(col=guide_legend("Borough"))+
@@ -148,14 +152,13 @@ shinyServer(function(input, output) {
                 strip.text.x = element_text(size = 13, colour = "black"),
                 strip.background = element_rect(fill="white")
                 )+
-            xlab("Year") +
-            ylab("Number of collisions")+
+            xlab("Year")+
             guides(col=guide_legend("Victim"))+
             ggtitle("Victim details")
     })
     output$causesPlot<- renderPlot({
         causes %>% 
-            filter(., borough == input$borough & rank <= input$causes_rank) %>%
+            filter(., borough == input$borough & rank>=input$causes_rank[1] & rank<=input$causes_rank[2]) %>%
             ggplot(aes(x=reorder(Contributing_Factor, pct), y=pct))+
             geom_bar(stat="identity", fill ="Sky blue", color = "Sky blue") +
             coord_flip()+
@@ -164,9 +167,30 @@ shinyServer(function(input, output) {
             xlab("Contributing factors") +
             theme(axis.title.x =element_text(size = 16))+
             theme(axis.text.x = element_text(size=12))+
-            ylab("Percent causes") +
+            ylab("Percent accidents") +
             theme(axis.title.y =element_text(size = 16)) +
             theme(axis.text.y = element_text(size=12))+
-            ggtitle("Percentage of causal factors by borough")
+            ggtitle("Percentage of accidents by causal factors")
         })
+    
+    output$nycmap <- renderLeaflet({
+        leaflet(one_per_week) %>%
+            fitBounds(-74.11, 40.6, -73.70, 40.9) %>% 
+            addProviderTiles(providers$Stamen.TonerLite,
+                             options = providerTileOptions(noWrap = TRUE)
+            ) %>%
+            addCircleMarkers(
+                ~longitude, ~latitude,
+                radius = 6,#~count,
+                color = "red",#~pal(count),
+                stroke = FALSE,
+                fillOpacity = 0.5,
+                # popup = ~htmlEscape(paste(paste0("Lat = ", latitude),  paste0("Long = " , longitude), paste0("Count = " ,count), sep = "<br/>"))
+                
+                popup = ~htmlEscape(paste(on_street,  " & " , cross_street, " (", borough, ")", " Accidents = " ,count))
+            ) 
+    })
+    output$tbl <-renderDT(
+        as.data.frame(one_per_week)[,-c(1,3,4)],options=list(lengthchange=TRUE)
+    )
 })
